@@ -1,0 +1,159 @@
+#define BLYNK_TEMPLATE_ID "TMPL3U2IRZAQK"
+#define BLYNK_TEMPLATE_NAME "Milk Quality"
+#define BLYNK_AUTH_TOKEN "m71DeuX2fFS10yEZ-2PiZNTN5c-Pv2CO"
+#define BLYNK_PRINT Serial
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <BlynkSimpleEsp32.h>
+
+char auth[] = BLYNK_AUTH_TOKEN;
+char ssid[] = "PROJECT";
+char pass[] = "11223344";
+
+#include <Wire.h>
+#include "Adafruit_TCS34725.h"
+#include <LiquidCrystal.h>
+LiquidCrystal lcd(23, 19, 18, 17, 16, 15);
+
+float phvalue;
+
+#define commonAnode true
+
+byte gammatable[256];
+
+Adafruit_TCS34725 tcs = Adafruit_TCS34725(TCS34725_INTEGRATIONTIME_50MS, TCS34725_GAIN_4X);
+
+int state = 0;
+
+void setup() {
+  Serial.begin(9600);
+  Blynk.begin(auth, ssid, pass);
+
+  lcd.begin(16, 2);
+
+
+  if (tcs.begin()) {
+    Serial.println("TCS34725 sensor found!");
+  } else {
+    Serial.println("No TCS34725 found ... check your connections");
+    while (1);
+  }
+  for (int i = 0; i < 256; i++) {
+    float x = i;
+    x /= 255;
+    x = pow(x, 2.5);
+    x *= 255;
+
+    if (commonAnode) {
+      gammatable[i] = 255 - x;
+    } else {
+      gammatable[i] = x;
+    }
+  }
+
+  lcd.setCursor(0, 0);
+  lcd.print("Welcome to Smart");
+  lcd.setCursor(0, 1);
+  lcd.print("  Milk Quality");
+  delay(3000);
+  lcd.clear();
+
+}
+
+void loop() {
+  Blynk.run();
+
+  float red, green, blue;
+  int R, G, B;
+
+  tcs.setInterrupt(false);  // Enable sensor LED
+  delay(60);  // Allow sensor to read color
+  tcs.getRGB(&red, &green, &blue);
+  tcs.setInterrupt(true);  // Disable sensor LED
+
+  R = int(red);
+  G = int(green);
+  B = int(blue);
+
+  Serial.print("R: "); Serial.print(R);
+  Serial.print("\tG: "); Serial.print(G);
+  Serial.print("\tB: "); Serial.print(B);
+  Serial.println(" ");
+
+  //    for(int i=1; i<=10; i++) {
+  String phdata = Serial.readStringUntil(':');
+  //        Serial.println(phdata);
+  //        delay(1000);
+  if (phdata != "") {
+    String ph = Serial.readStringUntil('$');
+
+    //            Serial.println(ph);
+    phvalue = ph.toFloat();
+    Serial.println();
+    Serial.println("PH Value");
+    Serial.println(phvalue);
+    Blynk.virtualWrite(V0, phvalue);
+  }
+  //}
+
+  String color = String("R") + String(R) + String(", ") + String("G") + String(G) + String(", ") + String("B") + String(B);
+
+  lcd.setCursor(0, 0);
+  lcd.print("pH Value:");
+  lcd.setCursor(9, 0);
+  lcd.print(phvalue);
+  lcd.setCursor(0, 1);
+  lcd.print(color);
+  //  lcd.setCursor(5, 1);
+  //  lcd.print(G);
+  //  lcd.setCursor(12, 1);
+  //  lcd.print(B);
+
+  Blynk.virtualWrite(V1, color);
+
+  delay(500);
+  lcd.setCursor(9, 0);
+  lcd.print("       ");
+  lcd.setCursor(0, 1);
+  lcd.print("                ");
+
+  if (state == 10) {
+
+    if ((R > 80 && R < 88) && (G > 90 && G < 100) && (B > 50 && B < 58)) {
+      if ((phvalue > 6.5) && (phvalue < 7.5)) {
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print("The milk is pure");
+        lcd.setCursor(0, 1);
+        lcd.print(" Good Quality!");
+        Serial.print("The milk is pure, Good Quality!");
+        Blynk.logEvent("info", "The milk is pure, Good Quality!");
+        delay(2000);
+        lcd.clear();
+      }
+    }
+    if ((R > 100 && R < 120) && (G > 85 && G < 95) && (B > 40 && B < 48)) {
+      if ((phvalue > 7.5) && (phvalue < 8.5)) {
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print("The milk  Impure");
+        lcd.setCursor(0, 1);
+        lcd.print(" Bad Quality!");
+        Serial.print("The milk is Impure, Bad Quality!");
+        Blynk.logEvent("info", "The milk is Impure, Bad Quality!");
+        delay(2000);
+        lcd.clear();
+      }
+    }
+  }
+}
+
+BLYNK_WRITE(V2) {
+
+  if (param.asInt() == 1) {
+    state = 10;
+  }
+  else {
+    state = 0;
+  }
+}
